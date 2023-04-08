@@ -15,6 +15,8 @@ pub trait Point: Sized {
     const DIM: usize;
     /// TODO
     fn coord(&self, axis: usize) -> f64;
+    /// TODO
+    fn distance_2(&self, other: &Self) -> f64;
 }
 
 impl<const N: usize> Point for [f64; N] {
@@ -22,6 +24,10 @@ impl<const N: usize> Point for [f64; N] {
 
     fn coord(&self, axis: usize) -> f64 {
         self[axis]
+    }
+
+    fn distance_2(&self, other: &Self) -> f64 {
+        (0..N).map(|i| (self[i] - other[i]).powi(2)).sum()
     }
 }
 
@@ -92,11 +98,7 @@ impl<const N: usize> Query<[f64; N]> for WithinDistance<N> {
     }
 
     fn test(&self, position: &[f64; N]) -> bool {
-        let distance_2 = (0..N)
-            .map(|i| (position[i] - self.center[i]).powi(2))
-            .sum::<f64>();
-
-        distance_2 <= self.distance_2
+        self.center.distance_2(position) <= self.distance_2
     }
 }
 
@@ -133,6 +135,15 @@ impl<O: Object> KdTree<O> {
         }
 
         look_up(&mut LookUpArgs { query, visitor }, &self.objects, 0);
+    }
+
+    /// TODO
+    pub fn nearest(&self, target: &O::Point) -> Option<&O> {
+        if self.objects.is_empty() {
+            return None;
+        }
+
+        Some(nearest(target, &self.objects, 0).0)
     }
 }
 
@@ -215,6 +226,44 @@ fn look_up<'a, O: Object, Q: Query<O::Point>, V: FnMut(&'a O) -> ControlFlow<()>
     }
 }
 
+fn nearest<'a, O: Object>(target: &O::Point, objects: &'a [O], axis: usize) -> (&'a O, f64) {
+    let (left, object, right) = split(objects);
+
+    let position = object.position();
+    let offset = target.coord(axis) - position.coord(axis);
+
+    let (near, far) = if offset.is_sign_negative() {
+        (left, right)
+    } else {
+        (right, left)
+    };
+
+    let next_axis = (axis + 1) % O::Point::DIM;
+
+    let mut best_match = object;
+    let mut distance_2 = target.distance_2(position);
+
+    if !near.is_empty() {
+        let (near, near_distance_2) = nearest(target, near, next_axis);
+
+        if distance_2 > near_distance_2 {
+            best_match = near;
+            distance_2 = near_distance_2;
+        }
+    }
+
+    if !far.is_empty() && distance_2 > offset.powi(2) {
+        let (far, far_distance_2) = nearest(target, far, next_axis);
+
+        if distance_2 > far_distance_2 {
+            best_match = far;
+            distance_2 = far_distance_2;
+        }
+    }
+
+    (best_match, distance_2)
+}
+
 fn split<O>(objects: &[O]) -> (&[O], &O, &[O]) {
     assert!(!objects.is_empty());
 
@@ -265,7 +314,12 @@ mod tests {
                 }
             }
 
-            let index = KdTree::new(xs.into_iter().zip(ys).map(|(x, y)| RandomObject([x, y])).collect());
+            let index = KdTree::new(
+                xs.into_iter()
+                    .zip(ys)
+                    .map(|(x, y)| RandomObject([x, y]))
+                    .collect(),
+            );
 
             for ((cx, cy), d) in cxs.into_iter().zip(cys).zip(ds) {
                 let query = WithinDistance::new([cx, cy], d);
@@ -276,15 +330,30 @@ mod tests {
                     ControlFlow::Continue(())
                 });
 
-                let mut results2 = index.iter().filter(|object| {
-                    (object.0[0] - cx).powi(2) + (object.0[1] - cy).powi(2) <= d.powi(2)
-                }).collect::<Vec<_>>();
+                let mut results2 = index
+                    .iter()
+                    .filter(|object| object.0.distance_2(&query.center) <= query.distance_2)
+                    .collect::<Vec<_>>();
 
                 let cmp_objs = |lhs: &&RandomObject, rhs: &&RandomObject| lhs.0.partial_cmp(&rhs.0).unwrap();
                 results1.sort_unstable_by(cmp_objs);
                 results2.sort_unstable_by(cmp_objs);
 
                 assert_eq!(results1, results2);
+
+                let result1 = index.nearest(&query.center).unwrap();
+
+                let result2 = index
+                    .iter()
+                    .min_by(|lhs, rhs| {
+                        let lhs = lhs.0.distance_2(&query.center);
+                        let rhs = rhs.0.distance_2(&query.center);
+
+                        lhs.partial_cmp(&rhs).unwrap()
+                    })
+                    .unwrap();
+
+                assert_eq!(result1, result2);
             }
         }
     }
