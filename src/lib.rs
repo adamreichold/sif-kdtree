@@ -2,6 +2,7 @@
 
 //! TODO
 
+use std::mem::swap;
 use std::ops::{ControlFlow, Deref};
 
 #[cfg(feature = "rayon")]
@@ -130,20 +131,24 @@ impl<O: Object> KdTree<O> {
         query: &Q,
         visitor: V,
     ) {
-        if self.objects.is_empty() {
-            return;
+        if !self.objects.is_empty() {
+            look_up(&mut LookUpArgs { query, visitor }, &self.objects, 0);
         }
-
-        look_up(&mut LookUpArgs { query, visitor }, &self.objects, 0);
     }
 
     /// TODO
     pub fn nearest(&self, target: &O::Point) -> Option<&O> {
-        if self.objects.is_empty() {
-            return None;
+        let mut args = NearestArgs {
+            target,
+            distance_2: f64::INFINITY,
+            best_match: None,
+        };
+
+        if !self.objects.is_empty() {
+            nearest(&mut args, &self.objects, 0);
         }
 
-        Some(nearest(target, &self.objects, 0).0)
+        args.best_match
     }
 }
 
@@ -226,42 +231,48 @@ fn look_up<'a, O: Object, Q: Query<O::Point>, V: FnMut(&'a O) -> ControlFlow<()>
     }
 }
 
-fn nearest<'a, O: Object>(target: &O::Point, objects: &'a [O], axis: usize) -> (&'a O, f64) {
-    let (left, object, right) = split(objects);
+struct NearestArgs<'a, 'b, O: Object> {
+    target: &'b O::Point,
+    distance_2: f64,
+    best_match: Option<&'a O>,
+}
 
-    let position = object.position();
-    let offset = target.coord(axis) - position.coord(axis);
+fn nearest<'a, O: Object>(
+    args: &mut NearestArgs<'a, '_, O>,
+    mut objects: &'a [O],
+    mut axis: usize,
+) {
+    loop {
+        let (mut left, object, mut right) = split(objects);
 
-    let (near, far) = if offset.is_sign_negative() {
-        (left, right)
-    } else {
-        (right, left)
-    };
+        let position = object.position();
 
-    let next_axis = (axis + 1) % O::Point::DIM;
+        let distance_2 = args.target.distance_2(position);
 
-    let mut best_match = object;
-    let mut distance_2 = target.distance_2(position);
-
-    if !near.is_empty() {
-        let (near, near_distance_2) = nearest(target, near, next_axis);
-
-        if distance_2 > near_distance_2 {
-            best_match = near;
-            distance_2 = near_distance_2;
+        if args.distance_2 > distance_2 {
+            args.distance_2 = distance_2;
+            args.best_match = Some(object);
         }
-    }
 
-    if !far.is_empty() && distance_2 > offset.powi(2) {
-        let (far, far_distance_2) = nearest(target, far, next_axis);
+        let offset = args.target.coord(axis) - position.coord(axis);
 
-        if distance_2 > far_distance_2 {
-            best_match = far;
-            distance_2 = far_distance_2;
+        if offset.is_sign_positive() {
+            swap(&mut left, &mut right);
         }
-    }
 
-    (best_match, distance_2)
+        let next_axis = (axis + 1) % O::Point::DIM;
+
+        if !left.is_empty() {
+            nearest(args, left, next_axis);
+        }
+
+        if right.is_empty() || args.distance_2 <= offset.powi(2) {
+            return;
+        }
+
+        objects = right;
+        axis = next_axis;
+    }
 }
 
 fn split<O>(objects: &[O]) -> (&[O], &O, &[O]) {
