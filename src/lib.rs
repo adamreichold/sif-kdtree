@@ -1,4 +1,4 @@
-#![deny(missing_docs)]
+#![deny(missing_docs, missing_debug_implementations)]
 
 //! TODO
 
@@ -44,6 +44,7 @@ pub trait Object: Send {
 }
 
 /// TODO
+#[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KdTree<O> {
     objects: Box<[O]>,
@@ -85,73 +86,41 @@ fn contains<P: Point>(aabb: &(P, P), position: &P) -> bool {
 mod tests {
     use super::*;
 
-    use std::ops::ControlFlow;
+    use std::cmp::Ordering;
 
-    use proptest::prelude::*;
+    use proptest::{collection::vec, strategy::Strategy};
 
-    proptest! {
-        #[test]
-        fn random_points(
-            xs in prop::collection::vec(0.0..=1.0, 100),
-            ys in prop::collection::vec(0.0..=1.0, 100),
-            cxs in prop::collection::vec(0.0..=1.0, 10),
-            cys in prop::collection::vec(0.0..=1.0, 10),
-            ds in prop::collection::vec(0.0..=1.0, 10),
-        ) {
-            #[derive(Debug, PartialEq)]
-            struct RandomObject([f64; 2]);
+    pub fn random_points(len: usize) -> impl Strategy<Value = Vec<[f64; 2]>> {
+        (vec(0.0..=1.0, len), vec(0.0..=1.0, len))
+            .prop_map(|(xs, ys)| xs.into_iter().zip(ys).map(|(x, y)| [x, y]).collect())
+    }
 
-            impl Object for RandomObject {
-                type Point = [f64; 2];
+    #[derive(Debug, PartialEq)]
+    pub struct RandomObject(pub [f64; 2]);
 
-                fn position(&self) -> &Self::Point {
-                    &self.0
-                }
-            }
+    impl Eq for RandomObject {}
 
-            let index = KdTree::new(
-                xs.into_iter()
-                    .zip(ys)
-                    .map(|(x, y)| RandomObject([x, y]))
-                    .collect(),
-            );
-
-            for ((cx, cy), d) in cxs.into_iter().zip(cys).zip(ds) {
-                let query = WithinDistance::new([cx, cy], d);
-
-                let mut results1 = Vec::new();
-                index.look_up(&query, |object| {
-                    results1.push(object);
-                    ControlFlow::Continue(())
-                });
-
-                let mut results2 = index
-                    .iter()
-                    .filter(|object| query.test(object.position()))
-                    .collect::<Vec<_>>();
-
-                let cmp_objs = |lhs: &&RandomObject, rhs: &&RandomObject| lhs.0.partial_cmp(&rhs.0).unwrap();
-                results1.sort_unstable_by(cmp_objs);
-                results2.sort_unstable_by(cmp_objs);
-
-                assert_eq!(results1, results2);
-
-                let target = [cx, cy];
-
-                let result1 = index.nearest(&target).unwrap();
-
-                let result2 = index
-                    .iter()
-                    .min_by(|lhs, rhs| {
-                        let lhs = lhs.0.distance_2(&target);
-                        let rhs = rhs.0.distance_2(&target);
-
-                        lhs.partial_cmp(&rhs).unwrap()
-                    })
-                    .unwrap();
-
-                assert_eq!(result1, result2);
-            }
+    impl PartialOrd for RandomObject {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
         }
+    }
+
+    impl Ord for RandomObject {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.0.partial_cmp(&other.0).unwrap()
+        }
+    }
+
+    impl Object for RandomObject {
+        type Point = [f64; 2];
+
+        fn position(&self) -> &Self::Point {
+            &self.0
+        }
+    }
+
+    pub fn random_objects(len: usize) -> impl Strategy<Value = Box<[RandomObject]>> {
+        random_points(len).prop_map(|points| points.into_iter().map(RandomObject).collect())
     }
 }

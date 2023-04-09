@@ -62,3 +62,42 @@ fn nearest<'a, O: Object>(
         axis = next_axis;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use proptest::test_runner::TestRunner;
+
+    use crate::tests::{random_objects, random_points};
+
+    #[test]
+    fn random_nearest() {
+        TestRunner::default()
+            .run(
+                &(random_objects(100), random_points(10)),
+                |(objects, targets)| {
+                    let index = KdTree::new(objects);
+
+                    for target in targets {
+                        let result1 = index
+                            .iter()
+                            .min_by(|lhs, rhs| {
+                                let lhs = lhs.0.distance_2(&target);
+                                let rhs = rhs.0.distance_2(&target);
+
+                                lhs.partial_cmp(&rhs).unwrap()
+                            })
+                            .unwrap();
+
+                        let result2 = index.nearest(&target).unwrap();
+
+                        assert_eq!(result1, result2);
+                    }
+
+                    Ok(())
+                },
+            )
+            .unwrap();
+    }
+}
