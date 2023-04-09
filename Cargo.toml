@@ -1,6 +1,6 @@
 [package]
 name = "sif-kdtree"
-description = "simple, immutable, flat K-D tree"
+description = "simple, immutable, flat k-d tree"
 version = "0.1.0"
 edition = "2018"
 
@@ -10,3 +10,6 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 
 [dev-dependencies]
 proptest = "1.1"
+
+[package.metadata.docs.rs]
+all-features = true

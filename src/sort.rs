@@ -3,8 +3,11 @@ use rayon::join;
 
 use crate::{KdTree, Object, Point};
 
-impl<O: Object> KdTree<O> {
-    /// TODO
+impl<O> KdTree<O>
+where
+    O: Object,
+{
+    /// Construct a new tree by sorting the given `objects`
     pub fn new(mut objects: Box<[O]>) -> Self {
         sort(&mut objects, 0);
 
@@ -12,15 +15,23 @@ impl<O: Object> KdTree<O> {
     }
 
     #[cfg(feature = "rayon")]
-    /// TODO
-    pub fn par_new(mut objects: Box<[O]>) -> Self {
+    /// Construct a new tree by sorting the given `objects`, in parallel
+    ///
+    /// Requires the `rayon` feature and dispatches tasks into the current [thread pool][rayon::ThreadPool].
+    pub fn par_new(mut objects: Box<[O]>) -> Self
+    where
+        O: Send,
+    {
         par_sort(&mut objects, 0);
 
         Self { objects }
     }
 }
 
-fn sort<O: Object>(objects: &mut [O], axis: usize) {
+fn sort<O>(objects: &mut [O], axis: usize)
+where
+    O: Object,
+{
     if objects.len() <= 1 {
         return;
     }
@@ -32,7 +43,10 @@ fn sort<O: Object>(objects: &mut [O], axis: usize) {
 }
 
 #[cfg(feature = "rayon")]
-fn par_sort<O: Object>(objects: &mut [O], axis: usize) {
+fn par_sort<O>(objects: &mut [O], axis: usize)
+where
+    O: Object + Send,
+{
     if objects.len() <= 1 {
         return;
     }
@@ -42,7 +56,10 @@ fn par_sort<O: Object>(objects: &mut [O], axis: usize) {
     join(|| sort(left, next_axis), || sort(right, next_axis));
 }
 
-fn sort_axis<O: Object>(objects: &mut [O], axis: usize) -> (&mut [O], &mut [O], usize) {
+fn sort_axis<O>(objects: &mut [O], axis: usize) -> (&mut [O], &mut [O], usize)
+where
+    O: Object,
+{
     let mid = objects.len() / 2;
 
     let (left, _, right) = objects.select_nth_unstable_by(mid, |lhs, rhs| {

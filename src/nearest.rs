@@ -2,8 +2,15 @@ use std::mem::swap;
 
 use crate::{split, KdTree, Object, Point};
 
-impl<O: Object> KdTree<O> {
-    /// TODO
+impl<O> KdTree<O>
+where
+    O: Object,
+{
+    /// Find the object nearest to the given `target`
+    ///
+    /// The distance is determined according to [`Point::distance_2`].
+    ///
+    /// Returns `None` if the tree is empty or if no object has a finite distance to the `target`.
     pub fn nearest(&self, target: &O::Point) -> Option<&O> {
         let mut args = NearestArgs {
             target,
@@ -19,17 +26,19 @@ impl<O: Object> KdTree<O> {
     }
 }
 
-struct NearestArgs<'a, 'b, O: Object> {
+struct NearestArgs<'a, 'b, O>
+where
+    O: Object,
+{
     target: &'b O::Point,
     distance_2: f64,
     best_match: Option<&'a O>,
 }
 
-fn nearest<'a, O: Object>(
-    args: &mut NearestArgs<'a, '_, O>,
-    mut objects: &'a [O],
-    mut axis: usize,
-) {
+fn nearest<'a, O>(args: &mut NearestArgs<'a, '_, O>, mut objects: &'a [O], mut axis: usize)
+where
+    O: Object,
+{
     loop {
         let (mut left, object, mut right) = split(objects);
 
@@ -54,12 +63,12 @@ fn nearest<'a, O: Object>(
             nearest(args, left, next_axis);
         }
 
-        if right.is_empty() || args.distance_2 <= offset.powi(2) {
+        if !right.is_empty() && args.distance_2 > offset.powi(2) {
+            objects = right;
+            axis = next_axis;
+        } else {
             return;
         }
-
-        objects = right;
-        axis = next_axis;
     }
 }
 

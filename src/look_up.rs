@@ -5,22 +5,32 @@ use rayon::join;
 
 use crate::{contains, split, KdTree, Object, Point};
 
-/// TODO
+/// Defines a spatial query by its axis-aligned bounding box (AABB) and a method to test a single point
+///
+/// The AABB of the query is used to limit the points which are tested and therefore the AABB should be as tight as possible while staying aligned to the coordinate axes.
+/// The test method itself can then be relatively expensive like determining the distance of the given position to an arbitrary polygon.
+///
+/// A very simple example of implementing this trait is [`WithinBoundingBox`] whereas a very common example is [`WithinDistance`].
 pub trait Query<P: Point> {
-    /// TODO
+    /// Return the axis-aligned bounding box (AABB) of the query
+    ///
+    /// Represented by the corners with first the smallest and then the largest coordinate values.
+    ///
+    /// Note that calling this method is assumed to be cheap, returning a reference to an AABB stored in the interior of the object.
     fn aabb(&self) -> &(P, P);
-    /// TODO
+
+    /// Check whether a given `position` inside the [axis-aligned bounding box (AABB)][Self::aabb] machtes the query.
     fn test(&self, position: &P) -> bool;
 }
 
-/// TODO
+/// A query which yields all objects within a given axis-aligned boundary box (AABB) in `N`-dimensional real space
 #[derive(Debug)]
 pub struct WithinBoundingBox<const N: usize> {
     aabb: ([f64; N], [f64; N]),
 }
 
 impl<const N: usize> WithinBoundingBox<N> {
-    /// TODO
+    /// Construct a query from first the corner smallest coordinate values `lower` and then the corner with the largest coordinate values `upper`
     pub fn new(lower: [f64; N], upper: [f64; N]) -> Self {
         Self {
             aabb: (lower, upper),
@@ -38,7 +48,7 @@ impl<const N: usize> Query<[f64; N]> for WithinBoundingBox<N> {
     }
 }
 
-/// TODO
+/// A query which yields all objects within a given distance to a central point in `N`-dimensional real space
 #[derive(Debug)]
 pub struct WithinDistance<const N: usize> {
     aabb: ([f64; N], [f64; N]),
@@ -47,7 +57,7 @@ pub struct WithinDistance<const N: usize> {
 }
 
 impl<const N: usize> WithinDistance<N> {
-    /// TODO
+    /// Construct a query from the `center` and the largest allowed Euclidean `distance` to it
     pub fn new(center: [f64; N], distance: f64) -> Self {
         Self {
             aabb: (
@@ -70,27 +80,41 @@ impl<const N: usize> Query<[f64; N]> for WithinDistance<N> {
     }
 }
 
-impl<O: Object> KdTree<O> {
-    /// TODO
-    pub fn look_up<'a, Q: Query<O::Point>, V: FnMut(&'a O) -> ControlFlow<()>>(
-        &'a self,
-        query: &Q,
-        visitor: V,
-    ) {
+impl<O> KdTree<O>
+where
+    O: Object,
+{
+    /// Find objects matching the given `query`
+    ///
+    /// Queries are defined by passing an implementor of the [`Query`] trait.
+    ///
+    /// Objects matching the `query` are passed to the `visitor` as they are found.
+    /// Depending on its [return value][`ControlFlow`], the search is continued or stopped.
+    pub fn look_up<'a, Q, V>(&'a self, query: &Q, visitor: V)
+    where
+        Q: Query<O::Point>,
+        V: FnMut(&'a O) -> ControlFlow<()>,
+    {
         if !self.objects.is_empty() {
             look_up(&mut LookUpArgs { query, visitor }, &self.objects, 0);
         }
     }
 
     #[cfg(feature = "rayon")]
-    /// TODO
-    pub fn par_look_up<'a, Q: Query<O::Point> + Sync, V: Fn(&'a O) + Sync>(
-        &'a self,
-        query: &Q,
-        visitor: V,
-    ) where
-        O: Sync,
+    /// Find objects matching the given `query`, in parallel
+    ///
+    /// Queries are defined by passing an implementor of the [`Query`] trait.
+    ///
+    /// Objects matching the `query` are passed to the `visitor` as they are found.
+    /// In contrast to the [serial version][Self::look_up], the search cannot be stopped early.
+    ///
+    /// Requires the `rayon` feature and dispatches tasks into the current [thread pool][rayon::ThreadPool].
+    pub fn par_look_up<'a, Q, V>(&'a self, query: &Q, visitor: V)
+    where
+        O: Send + Sync,
         O::Point: Sync,
+        Q: Query<O::Point> + Sync,
+        V: Fn(&'a O) + Sync,
     {
         if !self.objects.is_empty() {
             par_look_up(&LookUpArgs { query, visitor }, &self.objects, 0);
@@ -103,11 +127,16 @@ struct LookUpArgs<'a, Q, V> {
     visitor: V,
 }
 
-fn look_up<'a, O: Object, Q: Query<O::Point>, V: FnMut(&'a O) -> ControlFlow<()>>(
+fn look_up<'a, O, Q, V>(
     args: &mut LookUpArgs<Q, V>,
     mut objects: &'a [O],
     mut axis: usize,
-) -> ControlFlow<()> {
+) -> ControlFlow<()>
+where
+    O: Object,
+    Q: Query<O::Point>,
+    V: FnMut(&'a O) -> ControlFlow<()>,
+{
     loop {
         let (left, object, right) = split(objects);
 
@@ -123,22 +152,22 @@ fn look_up<'a, O: Object, Q: Query<O::Point>, V: FnMut(&'a O) -> ControlFlow<()>
             look_up(args, left, next_axis)?;
         }
 
-        if right.is_empty() || args.query.aabb().1.coord(axis) < position.coord(axis) {
+        if !right.is_empty() && position.coord(axis) <= args.query.aabb().1.coord(axis) {
+            objects = right;
+            axis = next_axis;
+        } else {
             return ControlFlow::Continue(());
         }
-
-        objects = right;
-        axis = next_axis;
     }
 }
 
 #[cfg(feature = "rayon")]
-fn par_look_up<'a, O: Object + Sync, Q: Query<O::Point> + Sync, V: Fn(&'a O) + Sync>(
-    args: &LookUpArgs<Q, V>,
-    objects: &'a [O],
-    axis: usize,
-) where
+fn par_look_up<'a, O, Q, V>(args: &LookUpArgs<Q, V>, objects: &'a [O], axis: usize)
+where
+    O: Object + Send + Sync,
     O::Point: Sync,
+    Q: Query<O::Point> + Sync,
+    V: Fn(&'a O) + Sync,
 {
     let (left, object, right) = split(objects);
 
@@ -157,7 +186,7 @@ fn par_look_up<'a, O: Object + Sync, Q: Query<O::Point> + Sync, V: Fn(&'a O) + S
             }
         },
         || {
-            if !right.is_empty() && args.query.aabb().1.coord(axis) >= position.coord(axis) {
+            if !right.is_empty() && position.coord(axis) <= args.query.aabb().1.coord(axis) {
                 par_look_up(args, right, next_axis);
             }
         },
