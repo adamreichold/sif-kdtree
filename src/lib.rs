@@ -2,11 +2,14 @@
 
 //! TODO
 
-use std::mem::swap;
-use std::ops::{ControlFlow, Deref};
+mod look_up;
+mod nearest;
+mod sort;
 
-#[cfg(feature = "rayon")]
-use rayon::join;
+pub use look_up::{Query, WithinBoundingBox, WithinDistance};
+
+use std::ops::Deref;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -41,115 +44,9 @@ pub trait Object: Send {
 }
 
 /// TODO
-pub trait Query<P: Point> {
-    /// TODO
-    fn aabb(&self) -> &(P, P);
-    /// TODO
-    fn test(&self, position: &P) -> bool;
-}
-
-/// TODO
-pub struct WithinBoundingBox<const N: usize> {
-    aabb: ([f64; N], [f64; N]),
-}
-
-impl<const N: usize> WithinBoundingBox<N> {
-    /// TODO
-    pub fn new(lower: [f64; N], upper: [f64; N]) -> Self {
-        Self {
-            aabb: (lower, upper),
-        }
-    }
-}
-
-impl<const N: usize> Query<[f64; N]> for WithinBoundingBox<N> {
-    fn aabb(&self) -> &([f64; N], [f64; N]) {
-        &self.aabb
-    }
-
-    fn test(&self, _position: &[f64; N]) -> bool {
-        true
-    }
-}
-
-/// TODO
-pub struct WithinDistance<const N: usize> {
-    aabb: ([f64; N], [f64; N]),
-    center: [f64; N],
-    distance_2: f64,
-}
-
-impl<const N: usize> WithinDistance<N> {
-    /// TODO
-    pub fn new(center: [f64; N], distance: f64) -> Self {
-        Self {
-            aabb: (
-                center.map(|coord| coord - distance),
-                center.map(|coord| coord + distance),
-            ),
-            center,
-            distance_2: distance.powi(2),
-        }
-    }
-}
-
-impl<const N: usize> Query<[f64; N]> for WithinDistance<N> {
-    fn aabb(&self) -> &([f64; N], [f64; N]) {
-        &self.aabb
-    }
-
-    fn test(&self, position: &[f64; N]) -> bool {
-        self.center.distance_2(position) <= self.distance_2
-    }
-}
-
-/// TODO
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KdTree<O> {
     objects: Box<[O]>,
-}
-
-impl<O: Object> KdTree<O> {
-    /// TODO
-    pub fn new(mut objects: Box<[O]>) -> Self {
-        sort(&mut objects, 0);
-
-        Self { objects }
-    }
-
-    #[cfg(feature = "rayon")]
-    /// TODO
-    pub fn par_new(mut objects: Box<[O]>) -> Self {
-        par_sort(&mut objects, 0);
-
-        Self { objects }
-    }
-
-    /// TODO
-    pub fn look_up<'a, Q: Query<O::Point>, V: FnMut(&'a O) -> ControlFlow<()>>(
-        &'a self,
-        query: &Q,
-        visitor: V,
-    ) {
-        if !self.objects.is_empty() {
-            look_up(&mut LookUpArgs { query, visitor }, &self.objects, 0);
-        }
-    }
-
-    /// TODO
-    pub fn nearest(&self, target: &O::Point) -> Option<&O> {
-        let mut args = NearestArgs {
-            target,
-            distance_2: f64::INFINITY,
-            best_match: None,
-        };
-
-        if !self.objects.is_empty() {
-            nearest(&mut args, &self.objects, 0);
-        }
-
-        args.best_match
-    }
 }
 
 impl<O> Deref for KdTree<O> {
@@ -157,121 +54,6 @@ impl<O> Deref for KdTree<O> {
 
     fn deref(&self) -> &Self::Target {
         &self.objects
-    }
-}
-
-fn sort<O: Object>(objects: &mut [O], axis: usize) {
-    if objects.len() <= 1 {
-        return;
-    }
-
-    let (left, right, next_axis) = sort_axis(objects, axis);
-
-    sort(left, next_axis);
-    sort(right, next_axis);
-}
-
-#[cfg(feature = "rayon")]
-fn par_sort<O: Object>(objects: &mut [O], axis: usize) {
-    if objects.len() <= 1 {
-        return;
-    }
-
-    let (left, right, next_axis) = sort_axis(objects, axis);
-
-    join(|| sort(left, next_axis), || sort(right, next_axis));
-}
-
-fn sort_axis<O: Object>(objects: &mut [O], axis: usize) -> (&mut [O], &mut [O], usize) {
-    let mid = objects.len() / 2;
-
-    let (left, _, right) = objects.select_nth_unstable_by(mid, |lhs, rhs| {
-        let lhs = lhs.position().coord(axis);
-        let rhs = rhs.position().coord(axis);
-
-        lhs.partial_cmp(&rhs).unwrap()
-    });
-
-    let next_axis = (axis + 1) % O::Point::DIM;
-
-    (left, right, next_axis)
-}
-
-struct LookUpArgs<'a, Q, V> {
-    query: &'a Q,
-    visitor: V,
-}
-
-fn look_up<'a, O: Object, Q: Query<O::Point>, V: FnMut(&'a O) -> ControlFlow<()>>(
-    args: &mut LookUpArgs<Q, V>,
-    mut objects: &'a [O],
-    mut axis: usize,
-) -> ControlFlow<()> {
-    loop {
-        let (left, object, right) = split(objects);
-
-        let position = object.position();
-
-        if contains(args.query.aabb(), position) && args.query.test(position) {
-            (args.visitor)(object)?;
-        }
-
-        let next_axis = (axis + 1) % O::Point::DIM;
-
-        if !left.is_empty() && args.query.aabb().0.coord(axis) <= position.coord(axis) {
-            look_up(args, left, next_axis)?;
-        }
-
-        if right.is_empty() || args.query.aabb().1.coord(axis) < position.coord(axis) {
-            return ControlFlow::Continue(());
-        }
-
-        objects = right;
-        axis = next_axis;
-    }
-}
-
-struct NearestArgs<'a, 'b, O: Object> {
-    target: &'b O::Point,
-    distance_2: f64,
-    best_match: Option<&'a O>,
-}
-
-fn nearest<'a, O: Object>(
-    args: &mut NearestArgs<'a, '_, O>,
-    mut objects: &'a [O],
-    mut axis: usize,
-) {
-    loop {
-        let (mut left, object, mut right) = split(objects);
-
-        let position = object.position();
-
-        let distance_2 = args.target.distance_2(position);
-
-        if args.distance_2 > distance_2 {
-            args.distance_2 = distance_2;
-            args.best_match = Some(object);
-        }
-
-        let offset = args.target.coord(axis) - position.coord(axis);
-
-        if offset.is_sign_positive() {
-            swap(&mut left, &mut right);
-        }
-
-        let next_axis = (axis + 1) % O::Point::DIM;
-
-        if !left.is_empty() {
-            nearest(args, left, next_axis);
-        }
-
-        if right.is_empty() || args.distance_2 <= offset.powi(2) {
-            return;
-        }
-
-        objects = right;
-        axis = next_axis;
     }
 }
 
@@ -302,6 +84,8 @@ fn contains<P: Point>(aabb: &(P, P), position: &P) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::ops::ControlFlow;
 
     use proptest::prelude::*;
 
@@ -343,7 +127,7 @@ mod tests {
 
                 let mut results2 = index
                     .iter()
-                    .filter(|object| object.0.distance_2(&query.center) <= query.distance_2)
+                    .filter(|object| query.test(object.position()))
                     .collect::<Vec<_>>();
 
                 let cmp_objs = |lhs: &&RandomObject, rhs: &&RandomObject| lhs.0.partial_cmp(&rhs.0).unwrap();
@@ -352,13 +136,15 @@ mod tests {
 
                 assert_eq!(results1, results2);
 
-                let result1 = index.nearest(&query.center).unwrap();
+                let target = [cx, cy];
+
+                let result1 = index.nearest(&target).unwrap();
 
                 let result2 = index
                     .iter()
                     .min_by(|lhs, rhs| {
-                        let lhs = lhs.0.distance_2(&query.center);
-                        let rhs = rhs.0.distance_2(&query.center);
+                        let lhs = lhs.0.distance_2(&target);
+                        let rhs = rhs.0.distance_2(&target);
 
                         lhs.partial_cmp(&rhs).unwrap()
                     })
