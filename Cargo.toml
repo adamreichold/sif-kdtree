@@ -1,7 +1,7 @@
 [package]
 name = "sif-kdtree"
 description = "simple, immutable, flat k-d tree"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 rust-version = "1.55"
 authors = ["Adam Reichold <adam.reichold@t-online.de>"]
@@ -10,7 +10,7 @@ readme = "README.md"
 documentation = "https://docs.rs/sif-kdtree"
 repository = "https://github.com/adamreichold/sif-kdtree"
 keywords = ["kdtree"]
-categories = ["data-structures", "simulation", "science::geospatial"]
+categories = ["data-structures", "simulation", "science::geo"]
 
 [dependencies]
 rayon = { version = "1.7", optional = true }
