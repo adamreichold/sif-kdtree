@@ -146,51 +146,66 @@ where
             (args.visitor)(object)?;
         }
 
-        let next_axis = (axis + 1) % O::Point::DIM;
+        let search_left =
+            !left.is_empty() && args.query.aabb().0.coord(axis) <= position.coord(axis);
 
-        if !left.is_empty() && args.query.aabb().0.coord(axis) <= position.coord(axis) {
-            look_up(args, left, next_axis)?;
-        }
+        let search_right =
+            !right.is_empty() && position.coord(axis) <= args.query.aabb().1.coord(axis);
 
-        if !right.is_empty() && position.coord(axis) <= args.query.aabb().1.coord(axis) {
-            objects = right;
-            axis = next_axis;
-        } else {
-            return ControlFlow::Continue(());
+        axis = (axis + 1) % O::Point::DIM;
+
+        match (search_left, search_right) {
+            (true, true) => {
+                look_up(args, left, axis)?;
+
+                objects = right;
+            }
+            (true, false) => objects = left,
+            (false, true) => objects = right,
+            (false, false) => return ControlFlow::Continue(()),
         }
     }
 }
 
 #[cfg(feature = "rayon")]
-fn par_look_up<'a, O, Q, V>(args: &LookUpArgs<Q, V>, objects: &'a [O], axis: usize)
+fn par_look_up<'a, O, Q, V>(args: &LookUpArgs<Q, V>, mut objects: &'a [O], mut axis: usize)
 where
     O: Object + Send + Sync,
     O::Point: Sync,
     Q: Query<O::Point> + Sync,
     V: Fn(&'a O) + Sync,
 {
-    let (left, object, right) = split(objects);
+    loop {
+        let (left, object, right) = split(objects);
 
-    let position = object.position();
+        let position = object.position();
 
-    if contains(args.query.aabb(), position) && args.query.test(position) {
-        (args.visitor)(object);
+        if contains(args.query.aabb(), position) && args.query.test(position) {
+            (args.visitor)(object);
+        }
+
+        let search_left =
+            !left.is_empty() && args.query.aabb().0.coord(axis) <= position.coord(axis);
+
+        let search_right =
+            !right.is_empty() && position.coord(axis) <= args.query.aabb().1.coord(axis);
+
+        axis = (axis + 1) % O::Point::DIM;
+
+        match (search_left, search_right) {
+            (true, true) => {
+                join(
+                    || par_look_up(args, left, axis),
+                    || par_look_up(args, right, axis),
+                );
+
+                return;
+            }
+            (true, false) => objects = left,
+            (false, true) => objects = right,
+            (false, false) => return,
+        }
     }
-
-    let next_axis = (axis + 1) % O::Point::DIM;
-
-    join(
-        || {
-            if !left.is_empty() && args.query.aabb().0.coord(axis) <= position.coord(axis) {
-                par_look_up(args, left, next_axis);
-            }
-        },
-        || {
-            if !right.is_empty() && position.coord(axis) <= args.query.aabb().1.coord(axis) {
-                par_look_up(args, right, next_axis);
-            }
-        },
-    );
 }
 
 #[cfg(test)]

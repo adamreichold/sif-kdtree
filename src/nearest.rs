@@ -57,15 +57,23 @@ where
             swap(&mut left, &mut right);
         }
 
-        let next_axis = (axis + 1) % O::Point::DIM;
+        let search_left = !left.is_empty();
+        let search_right = !right.is_empty();
 
-        if !left.is_empty() {
-            nearest(args, left, next_axis);
-        }
+        axis = (axis + 1) % O::Point::DIM;
 
-        if !right.is_empty() && args.distance_2 > offset.powi(2) {
-            objects = right;
-            axis = next_axis;
+        if search_right {
+            if search_left {
+                nearest(args, left, axis);
+            }
+
+            if args.distance_2 > offset.powi(2) {
+                objects = right;
+            } else {
+                return;
+            }
+        } else if search_left {
+            objects = left;
         } else {
             return;
         }
