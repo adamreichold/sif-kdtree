@@ -53,7 +53,7 @@ where
 
     let (left, right, next_axis) = sort_axis(objects, axis);
 
-    join(|| sort(left, next_axis), || sort(right, next_axis));
+    join(|| par_sort(left, next_axis), || par_sort(right, next_axis));
 }
 
 fn sort_axis<O>(objects: &mut [O], axis: usize) -> (&mut [O], &mut [O], usize)
