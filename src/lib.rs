@@ -129,6 +129,12 @@ impl<O> Deref for KdTree<O> {
     }
 }
 
+impl<O> AsRef<[O]> for KdTree<O> {
+    fn as_ref(&self) -> &[O] {
+        &self.objects
+    }
+}
+
 fn split<O>(objects: &[O]) -> (&[O], &O, &[O]) {
     assert!(!objects.is_empty());
 
