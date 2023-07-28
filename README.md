@@ -4,7 +4,7 @@
 [![docs.rs](https://docs.rs/sif-kdtree/badge.svg)](https://docs.rs/sif-kdtree)
 [![github.com](https://github.com/adamreichold/sif-kdtree/actions/workflows/test.yaml/badge.svg)](https://github.com/adamreichold/sif-kdtree/actions/workflows/test.yaml)
 
-A simple library implementing an immutable, flat representation of a [k-d tree](https://en.wikipedia.org/wiki/K-d_tree) supporting arbitrary spatial queries and nearest neighbour search.
+A simple library implementing an immutable, flat representation of a [k-d tree](https://en.wikipedia.org/wiki/K-d_tree) supporting arbitrary spatial queries, nearest neighbour search and backing storage based on memory maps.
 
 ## License
 

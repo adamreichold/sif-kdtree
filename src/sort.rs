@@ -1,30 +1,39 @@
+use std::marker::PhantomData;
+
 #[cfg(feature = "rayon")]
 use rayon::join;
 
 use crate::{KdTree, Object, Point};
 
-impl<O> KdTree<O>
+impl<O, S> KdTree<O, S>
 where
     O: Object,
+    S: AsRef<[O]> + AsMut<[O]>,
 {
     /// Construct a new tree by sorting the given `objects`
-    pub fn new(mut objects: Box<[O]>) -> Self {
-        sort(&mut objects, 0);
+    pub fn new(mut objects: S) -> Self {
+        sort(objects.as_mut(), 0);
 
-        Self { objects }
+        Self {
+            objects,
+            _marker: PhantomData,
+        }
     }
 
     #[cfg(feature = "rayon")]
     /// Construct a new tree by sorting the given `objects`, in parallel
     ///
     /// Requires the `rayon` feature and dispatches tasks into the current [thread pool][rayon::ThreadPool].
-    pub fn par_new(mut objects: Box<[O]>) -> Self
+    pub fn par_new(mut objects: S) -> Self
     where
         O: Send,
     {
-        par_sort(&mut objects, 0);
+        par_sort(objects.as_mut(), 0);
 
-        Self { objects }
+        Self {
+            objects,
+            _marker: PhantomData,
+        }
     }
 }
 
