@@ -4,7 +4,7 @@
 //!
 //! The library supports arbitrary spatial queries via the [`Query`] trait and nearest neighbour search.
 //! Its implementation is simple as the objects in the index are fixed after construction.
-//! This also enables a flat and thereby cache-friendly memory layout.
+//! This also enables a flat and thereby cache-friendly memory layout which can be backed by memory maps.
 //!
 //! The library provides optional integration with [rayon] for parallel construction and queries and [serde] for (de-)serialization of the trees.
 //!
@@ -26,7 +26,7 @@
 //! }
 //!
 //! let index = KdTree::new(
-//!     [
+//!     vec![
 //!         Something(0, [-0.4, -3.3]),
 //!         Something(1, [-4.5, -1.8]),
 //!         Something(2, [0.7, 2.0]),
@@ -40,8 +40,7 @@
 //!         Something(10, [4.3, 0.8]),
 //!         Something(11, [3.9, -3.3]),
 //!         Something(12, [0.4, -3.2]),
-//!     ]
-//!     .into(),
+//!     ],
 //! );
 //!
 //! let mut close_by = Vec::new();
@@ -58,6 +57,48 @@
 //!
 //! assert_eq!(closest, 2);
 //! ```
+//!
+//! The [`KdTree`] data structure is generic over its backing storage as long as it can be converted into a slice via the [`AsRef`] trait.
+//! This can for instance be used to memory map k-d trees from persistent storage.
+//!
+//! ```no_run
+//! # fn main() -> std::io::Result<()> {
+//! use std::fs::File;
+//! use std::mem::size_of;
+//! use std::slice::from_raw_parts;
+//!
+//! use memmap2::Mmap;
+//!
+//! use sif_kdtree::{KdTree, Object};
+//!
+//! #[derive(Clone, Copy)]
+//! struct Point([f64; 3]);
+//!
+//! impl Object for Point {
+//!     type Point = [f64; 3];
+//!
+//!     fn position(&self) -> &Self::Point {
+//!         &self.0
+//!     }
+//! }
+//!
+//! let file = File::open("index.bin")?;
+//! let map = unsafe { Mmap::map(&file)? };
+//!
+//! struct PointCloud(Mmap);
+//!
+//! impl AsRef<[Point]> for PointCloud {
+//!     fn as_ref(&self) -> &[Point] {
+//!         let ptr = self.0.as_ptr().cast();
+//!         let len = self.0.len() / size_of::<Point>();
+//!
+//!         unsafe { from_raw_parts(ptr, len) }
+//!     }
+//! }
+//!
+//! let index = KdTree::new_unchecked(PointCloud(map));
+//! # Ok(()) }
+//! ```
 
 mod look_up;
 mod nearest;
@@ -65,6 +106,7 @@ mod sort;
 
 pub use look_up::{Query, WithinBoundingBox, WithinDistance};
 
+use std::marker::PhantomData;
 use std::ops::Deref;
 
 #[cfg(feature = "serde")]
@@ -117,21 +159,47 @@ pub trait Object {
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct KdTree<O> {
-    objects: Box<[O]>,
+pub struct KdTree<O, S = Box<[O]>>
+where
+    S: AsRef<[O]>,
+{
+    objects: S,
+    _marker: PhantomData<O>,
 }
 
-impl<O> Deref for KdTree<O> {
-    type Target = [O];
-
-    fn deref(&self) -> &Self::Target {
-        &self.objects
+impl<O, S> KdTree<O, S>
+where
+    O: Object,
+    S: AsRef<[O]>,
+{
+    /// Interprets the given `objects` as a tree
+    ///
+    /// Supplying `objects` which are not actually sorted as a k-d tree is safe but will lead to incorrect results.
+    pub fn new_unchecked(objects: S) -> Self {
+        Self {
+            objects,
+            _marker: PhantomData,
+        }
     }
 }
 
-impl<O> AsRef<[O]> for KdTree<O> {
+impl<O, S> Deref for KdTree<O, S>
+where
+    S: AsRef<[O]>,
+{
+    type Target = [O];
+
+    fn deref(&self) -> &Self::Target {
+        self.objects.as_ref()
+    }
+}
+
+impl<O, S> AsRef<[O]> for KdTree<O, S>
+where
+    S: AsRef<[O]>,
+{
     fn as_ref(&self) -> &[O] {
-        &self.objects
+        self.objects.as_ref()
     }
 }
 

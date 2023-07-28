@@ -80,9 +80,10 @@ impl<const N: usize> Query<[f64; N]> for WithinDistance<N> {
     }
 }
 
-impl<O> KdTree<O>
+impl<O, S> KdTree<O, S>
 where
     O: Object,
+    S: AsRef<[O]>,
 {
     /// Find objects matching the given `query`
     ///
@@ -95,8 +96,10 @@ where
         Q: Query<O::Point>,
         V: FnMut(&'a O) -> ControlFlow<()>,
     {
-        if !self.objects.is_empty() {
-            look_up(&mut LookUpArgs { query, visitor }, &self.objects, 0);
+        let objects = self.objects.as_ref();
+
+        if !objects.is_empty() {
+            look_up(&mut LookUpArgs { query, visitor }, objects, 0);
         }
     }
 
@@ -116,8 +119,10 @@ where
         Q: Query<O::Point> + Sync,
         V: Fn(&'a O) + Sync,
     {
-        if !self.objects.is_empty() {
-            par_look_up(&LookUpArgs { query, visitor }, &self.objects, 0);
+        let objects = self.objects.as_ref();
+
+        if !objects.is_empty() {
+            par_look_up(&LookUpArgs { query, visitor }, objects, 0);
         }
     }
 }

@@ -2,9 +2,10 @@ use std::mem::swap;
 
 use crate::{split, KdTree, Object, Point};
 
-impl<O> KdTree<O>
+impl<O, S> KdTree<O, S>
 where
     O: Object,
+    S: AsRef<[O]>,
 {
     /// Find the object nearest to the given `target`
     ///
@@ -18,8 +19,10 @@ where
             best_match: None,
         };
 
-        if !self.objects.is_empty() {
-            nearest(&mut args, &self.objects, 0);
+        let objects = self.objects.as_ref();
+
+        if !objects.is_empty() {
+            nearest(&mut args, objects, 0);
         }
 
         args.best_match
