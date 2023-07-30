@@ -109,33 +109,46 @@ pub use look_up::{Query, WithinBoundingBox, WithinDistance};
 use std::marker::PhantomData;
 use std::ops::Deref;
 
+use num_traits::Num;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-/// Defines a [finite-dimensional][Self::DIM] real space in terms of [coordinate values][Self::coord] along a chosen set of axes
+/// Defines a [finite-dimensional][Self::DIM] space in terms of [coordinate values][Self::coord] along a chosen set of axes
 pub trait Point {
-    /// The dimension of the underlying real space
+    /// The dimension of the underlying space
     const DIM: usize;
 
+    /// The type of the coordinate values
+    type Coord: Num + Copy + PartialOrd;
+
     /// Access the coordinate value of the point along the given `axis`
-    fn coord(&self, axis: usize) -> f64;
+    fn coord(&self, axis: usize) -> Self::Coord;
 
     /// Return the squared distance between `self` and `other`.
     ///
     /// This is called during nearest neighbour search and hence only the relation between two distance values is required so that computing square roots can be avoided.
-    fn distance_2(&self, other: &Self) -> f64;
+    fn distance_2(&self, other: &Self) -> Self::Coord;
 }
 
-/// `N`-dimensional real space using [Euclidean distance](https://en.wikipedia.org/wiki/Euclidean_distance)
-impl<const N: usize> Point for [f64; N] {
+/// `N`-dimensional space using [Euclidean distance](https://en.wikipedia.org/wiki/Euclidean_distance)
+impl<T, const N: usize> Point for [T; N]
+where
+    T: Num + Copy + PartialOrd,
+{
     const DIM: usize = N;
 
-    fn coord(&self, axis: usize) -> f64 {
+    type Coord = T;
+
+    fn coord(&self, axis: usize) -> Self::Coord {
         self[axis]
     }
 
-    fn distance_2(&self, other: &Self) -> f64 {
-        (0..N).map(|axis| (self[axis] - other[axis]).powi(2)).sum()
+    fn distance_2(&self, other: &Self) -> Self::Coord {
+        (0..N).fold(T::zero(), |res, axis| {
+            let diff = self[axis] - other[axis];
+
+            res + diff * diff
+        })
     }
 }
 
@@ -234,13 +247,13 @@ mod tests {
 
     use proptest::{collection::vec, strategy::Strategy};
 
-    pub fn random_points(len: usize) -> impl Strategy<Value = Vec<[f64; 2]>> {
-        (vec(0.0..=1.0, len), vec(0.0..=1.0, len))
+    pub fn random_points(len: usize) -> impl Strategy<Value = Vec<[f32; 2]>> {
+        (vec(0.0_f32..=1.0, len), vec(0.0_f32..=1.0, len))
             .prop_map(|(x, y)| x.into_iter().zip(y).map(|(x, y)| [x, y]).collect())
     }
 
     #[derive(Debug, PartialEq)]
-    pub struct RandomObject(pub [f64; 2]);
+    pub struct RandomObject(pub [f32; 2]);
 
     impl Eq for RandomObject {}
 
@@ -257,7 +270,7 @@ mod tests {
     }
 
     impl Object for RandomObject {
-        type Point = [f64; 2];
+        type Point = [f32; 2];
 
         fn position(&self) -> &Self::Point {
             &self.0

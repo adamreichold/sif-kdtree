@@ -1,5 +1,6 @@
 use std::ops::ControlFlow;
 
+use num_traits::Num;
 #[cfg(feature = "rayon")]
 use rayon::join;
 
@@ -23,59 +24,68 @@ pub trait Query<P: Point> {
     fn test(&self, position: &P) -> bool;
 }
 
-/// A query which yields all objects within a given axis-aligned boundary box (AABB) in `N`-dimensional real space
+/// A query which yields all objects within a given axis-aligned boundary box (AABB) in `N`-dimensional space
 #[derive(Debug)]
-pub struct WithinBoundingBox<const N: usize> {
-    aabb: ([f64; N], [f64; N]),
+pub struct WithinBoundingBox<T, const N: usize> {
+    aabb: ([T; N], [T; N]),
 }
 
-impl<const N: usize> WithinBoundingBox<N> {
+impl<T, const N: usize> WithinBoundingBox<T, N> {
     /// Construct a query from first the corner smallest coordinate values `lower` and then the corner with the largest coordinate values `upper`
-    pub fn new(lower: [f64; N], upper: [f64; N]) -> Self {
+    pub fn new(lower: [T; N], upper: [T; N]) -> Self {
         Self {
             aabb: (lower, upper),
         }
     }
 }
 
-impl<const N: usize> Query<[f64; N]> for WithinBoundingBox<N> {
-    fn aabb(&self) -> &([f64; N], [f64; N]) {
+impl<T, const N: usize> Query<[T; N]> for WithinBoundingBox<T, N>
+where
+    T: Num + Copy + PartialOrd,
+{
+    fn aabb(&self) -> &([T; N], [T; N]) {
         &self.aabb
     }
 
-    fn test(&self, _position: &[f64; N]) -> bool {
+    fn test(&self, _position: &[T; N]) -> bool {
         true
     }
 }
 
 /// A query which yields all objects within a given distance to a central point in `N`-dimensional real space
 #[derive(Debug)]
-pub struct WithinDistance<const N: usize> {
-    aabb: ([f64; N], [f64; N]),
-    center: [f64; N],
-    distance_2: f64,
+pub struct WithinDistance<T, const N: usize> {
+    aabb: ([T; N], [T; N]),
+    center: [T; N],
+    distance_2: T,
 }
 
-impl<const N: usize> WithinDistance<N> {
+impl<T, const N: usize> WithinDistance<T, N>
+where
+    T: Num + Copy + PartialOrd,
+{
     /// Construct a query from the `center` and the largest allowed Euclidean `distance` to it
-    pub fn new(center: [f64; N], distance: f64) -> Self {
+    pub fn new(center: [T; N], distance: T) -> Self {
         Self {
             aabb: (
                 center.map(|coord| coord - distance),
                 center.map(|coord| coord + distance),
             ),
             center,
-            distance_2: distance.powi(2),
+            distance_2: distance * distance,
         }
     }
 }
 
-impl<const N: usize> Query<[f64; N]> for WithinDistance<N> {
-    fn aabb(&self) -> &([f64; N], [f64; N]) {
+impl<T, const N: usize> Query<[T; N]> for WithinDistance<T, N>
+where
+    T: Num + Copy + PartialOrd,
+{
+    fn aabb(&self) -> &([T; N], [T; N]) {
         &self.aabb
     }
 
-    fn test(&self, position: &[f64; N]) -> bool {
+    fn test(&self, position: &[T; N]) -> bool {
         self.center.distance_2(position) <= self.distance_2
     }
 }
@@ -224,8 +234,8 @@ mod tests {
 
     use crate::tests::{random_objects, random_points};
 
-    pub fn random_queries(len: usize) -> impl Strategy<Value = Vec<WithinDistance<2>>> {
-        (random_points(len), vec(0.0..=1.0, len)).prop_map(|(centers, distances)| {
+    pub fn random_queries(len: usize) -> impl Strategy<Value = Vec<WithinDistance<f32, 2>>> {
+        (random_points(len), vec(0.0_f32..=1.0, len)).prop_map(|(centers, distances)| {
             centers
                 .into_iter()
                 .zip(distances)
