@@ -1,10 +1,13 @@
 use std::mem::swap;
 
+use num_traits::Float;
+
 use crate::{split, KdTree, Object, Point};
 
 impl<O, S> KdTree<O, S>
 where
     O: Object,
+    <O::Point as Point>::Coord: Float,
     S: AsRef<[O]>,
 {
     /// Find the object nearest to the given `target`
@@ -15,7 +18,7 @@ where
     pub fn nearest(&self, target: &O::Point) -> Option<&O> {
         let mut args = NearestArgs {
             target,
-            distance_2: f64::INFINITY,
+            distance_2: <O::Point as Point>::Coord::infinity(),
             best_match: None,
         };
 
@@ -34,13 +37,14 @@ where
     O: Object,
 {
     target: &'b O::Point,
-    distance_2: f64,
+    distance_2: <O::Point as Point>::Coord,
     best_match: Option<&'a O>,
 }
 
 fn nearest<'a, O>(args: &mut NearestArgs<'a, '_, O>, mut objects: &'a [O], mut axis: usize)
 where
     O: Object,
+    <O::Point as Point>::Coord: Float,
 {
     loop {
         let (mut left, object, mut right) = split(objects);
