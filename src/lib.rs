@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 #![deny(missing_docs, missing_debug_implementations)]
 
 //! A simple library implementing an immutable, flat representation of a [k-d tree](https://en.wikipedia.org/wiki/K-d_tree)
@@ -217,17 +218,10 @@ where
 }
 
 fn split<O>(objects: &[O]) -> (&[O], &O, &[O]) {
-    assert!(!objects.is_empty());
+    let (left, objects) = objects.split_at(objects.len() / 2);
+    let (mid, right) = objects.split_first().unwrap();
 
-    let mid = objects.len() / 2;
-
-    unsafe {
-        (
-            objects.get_unchecked(..mid),
-            objects.get_unchecked(mid),
-            objects.get_unchecked(mid + 1..),
-        )
-    }
+    (left, mid, right)
 }
 
 fn contains<P>(aabb: &(P, P), position: &P) -> bool
