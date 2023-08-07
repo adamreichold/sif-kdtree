@@ -101,7 +101,7 @@ where
     ///
     /// Objects matching the `query` are passed to the `visitor` as they are found.
     /// Depending on its [return value][`ControlFlow`], the search is continued or stopped.
-    pub fn look_up<'a, Q, V>(&'a self, query: &Q, visitor: V)
+    pub fn look_up<'a, Q, V>(&'a self, query: &Q, visitor: V) -> ControlFlow<()>
     where
         Q: Query<O::Point>,
         V: FnMut(&'a O) -> ControlFlow<()>,
@@ -109,8 +109,10 @@ where
         let objects = self.objects.as_ref();
 
         if !objects.is_empty() {
-            look_up(&mut LookUpArgs { query, visitor }, objects, 0);
+            look_up(&mut LookUpArgs { query, visitor }, objects, 0)?;
         }
+
+        ControlFlow::Continue(())
     }
 
     #[cfg(feature = "rayon")]
