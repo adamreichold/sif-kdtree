@@ -4,7 +4,7 @@ use num_traits::Num;
 #[cfg(feature = "rayon")]
 use rayon::join;
 
-use crate::{contains, split, KdTree, Object, Point};
+use crate::{contains, split, Distance, KdTree, Object, Point};
 
 /// Defines a spatial query by its axis-aligned bounding box (AABB) and a method to test a single point
 ///

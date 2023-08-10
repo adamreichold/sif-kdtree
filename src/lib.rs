@@ -124,8 +124,11 @@ pub trait Point {
 
     /// Access the coordinate value of the point along the given `axis`
     fn coord(&self, axis: usize) -> Self::Coord;
+}
 
-    /// Return the squared distance between `self` and `other`.
+/// Extends the [`Point`] trait by a distance metric required for nearest neighbour search
+pub trait Distance: Point {
+    /// Return the squared distance between `self` and `other`
     ///
     /// This is called during nearest neighbour search and hence only the relation between two distance values is required so that computing square roots can be avoided.
     fn distance_2(&self, other: &Self) -> Self::Coord;
@@ -143,7 +146,12 @@ where
     fn coord(&self, axis: usize) -> Self::Coord {
         self[axis]
     }
+}
 
+impl<T, const N: usize> Distance for [T; N]
+where
+    T: Num + Copy + PartialOrd,
+{
     fn distance_2(&self, other: &Self) -> Self::Coord {
         (0..N).fold(T::zero(), |res, axis| {
             let diff = self[axis] - other[axis];
@@ -153,12 +161,12 @@ where
     }
 }
 
-/// Defines the objects which can be organized in a [`KdTree`] by positioning them in a real space defined via the [`Point`] trait
+/// Defines the objects which can be organized in a [`KdTree`] by positioning them in the vector space defined via the [`Point`] trait
 pub trait Object {
-    /// The [`Point`] implementation used to represent the [position][`Self::position`] of these objects.
+    /// The [`Point`] implementation used to represent the [position][`Self::position`] of these objects
     type Point: Point;
 
-    /// Return the position associated with this object.
+    /// Return the position associated with this object
     ///
     /// Note that calling this method is assumed to be cheap, returning a reference to a point stored in the interior of the object.
     fn position(&self) -> &Self::Point;

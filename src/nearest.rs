@@ -2,11 +2,12 @@ use std::mem::swap;
 
 use num_traits::Float;
 
-use crate::{split, KdTree, Object, Point};
+use crate::{split, Distance, KdTree, Object, Point};
 
 impl<O, S> KdTree<O, S>
 where
     O: Object,
+    O::Point: Distance,
     <O::Point as Point>::Coord: Float,
     S: AsRef<[O]>,
 {
@@ -44,6 +45,7 @@ where
 fn nearest<'a, O>(args: &mut NearestArgs<'a, '_, O>, mut objects: &'a [O], mut axis: usize)
 where
     O: Object,
+    O::Point: Distance,
     <O::Point as Point>::Coord: Float,
 {
     loop {
