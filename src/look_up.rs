@@ -121,21 +121,24 @@ where
     /// Queries are defined by passing an implementor of the [`Query`] trait.
     ///
     /// Objects matching the `query` are passed to the `visitor` as they are found.
-    /// In contrast to the [serial version][Self::look_up], the search cannot be stopped early.
+    /// In contrast to the [serial version][Self::look_up], parts of the search can continue
+    /// even after it has been stopped.
     ///
     /// Requires the `rayon` feature and dispatches tasks into the current [thread pool][rayon::ThreadPool].
-    pub fn par_look_up<'a, Q, V>(&'a self, query: &Q, visitor: V)
+    pub fn par_look_up<'a, Q, V>(&'a self, query: &Q, visitor: V) -> ControlFlow<()>
     where
         O: Send + Sync,
         O::Point: Sync,
         Q: Query<O::Point> + Sync,
-        V: Fn(&'a O) + Sync,
+        V: Fn(&'a O) -> ControlFlow<()> + Sync,
     {
         let objects = self.objects.as_ref();
 
         if !objects.is_empty() {
             par_look_up(&LookUpArgs { query, visitor }, objects, 0);
         }
+
+        ControlFlow::Continue(())
     }
 }
 
@@ -185,12 +188,16 @@ where
 }
 
 #[cfg(feature = "rayon")]
-fn par_look_up<'a, O, Q, V>(args: &LookUpArgs<Q, V>, mut objects: &'a [O], mut axis: usize)
+fn par_look_up<'a, O, Q, V>(
+    args: &LookUpArgs<Q, V>,
+    mut objects: &'a [O],
+    mut axis: usize,
+) -> ControlFlow<()>
 where
     O: Object + Send + Sync,
     O::Point: Sync,
     Q: Query<O::Point> + Sync,
-    V: Fn(&'a O) + Sync,
+    V: Fn(&'a O) -> ControlFlow<()> + Sync,
 {
     loop {
         let (left, object, right) = split(objects);
@@ -211,16 +218,19 @@ where
 
         match (search_left, search_right) {
             (true, true) => {
-                join(
+                let (left, right) = join(
                     || par_look_up(args, left, axis),
                     || par_look_up(args, right, axis),
                 );
 
-                return;
+                left?;
+                right?;
+
+                return ControlFlow::Continue(());
             }
             (true, false) => objects = left,
             (false, true) => objects = right,
-            (false, false) => return,
+            (false, false) => return ControlFlow::Continue(()),
         }
     }
 }
@@ -295,6 +305,7 @@ mod tests {
                         let results2 = Mutex::new(Vec::new());
                         index.par_look_up(&query, |object| {
                             results2.lock().unwrap().push(object);
+                            ControlFlow::Continue(())
                         });
                         let mut results2 = results2.into_inner().unwrap();
 
