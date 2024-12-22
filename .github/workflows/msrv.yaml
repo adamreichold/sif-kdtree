@@ -9,5 +9,5 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 1
-    - uses: dtolnay/rust-toolchain@1.55.0
+    - uses: dtolnay/rust-toolchain@1.63.0
     - run: cargo check

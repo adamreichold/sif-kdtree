@@ -1,9 +1,9 @@
 [package]
 name = "sif-kdtree"
 description = "simple, immutable, flat k-d tree"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2018"
-rust-version = "1.55"
+rust-version = "1.63"
 authors = ["Adam Reichold <adam.reichold@t-online.de>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"

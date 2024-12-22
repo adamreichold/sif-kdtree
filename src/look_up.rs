@@ -135,7 +135,7 @@ where
         let objects = self.objects.as_ref();
 
         if !objects.is_empty() {
-            par_look_up(&LookUpArgs { query, visitor }, objects, 0);
+            par_look_up(&LookUpArgs { query, visitor }, objects, 0)?;
         }
 
         ControlFlow::Continue(())
@@ -205,7 +205,7 @@ where
         let position = object.position();
 
         if contains(args.query.aabb(), position) && args.query.test(position) {
-            (args.visitor)(object);
+            (args.visitor)(object)?;
         }
 
         let search_left =
