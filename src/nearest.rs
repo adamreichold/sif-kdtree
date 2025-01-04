@@ -13,7 +13,7 @@ where
 {
     /// Find the object nearest to the given `target`
     ///
-    /// The distance is determined according to [`Point::distance_2`].
+    /// The distance is determined according to [`Distance::distance_2`].
     ///
     /// Returns `None` if the tree is empty or if no object has a finite distance to the `target`.
     pub fn nearest(&self, target: &O::Point) -> Option<&O> {
