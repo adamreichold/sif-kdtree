@@ -46,11 +46,14 @@
 //!
 //! let mut close_by = Vec::new();
 //!
-//! index.look_up(&WithinDistance::new([0., 0.], 3.), |thing| {
-//!     close_by.push(thing.0);
+//! index
+//!     .look_up(&WithinDistance::new([0., 0.], 3.), |thing| {
+//!         close_by.push(thing.0);
 //!
-//!     ControlFlow::Continue(())
-//! });
+//!         ControlFlow::<()>::Continue(())
+//!     })
+//!     .continue_value()
+//!     .unwrap();
 //!
 //! assert_eq!(close_by, [2, 4, 5, 3]);
 //!

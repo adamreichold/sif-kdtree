@@ -101,10 +101,10 @@ where
     ///
     /// Objects matching the `query` are passed to the `visitor` as they are found.
     /// Depending on its [return value][`ControlFlow`], the search is continued or stopped.
-    pub fn look_up<'a, Q, V>(&'a self, query: &Q, visitor: V) -> ControlFlow<()>
+    pub fn look_up<'a, Q, V, R>(&'a self, query: &Q, visitor: V) -> ControlFlow<R>
     where
         Q: Query<O::Point>,
-        V: FnMut(&'a O) -> ControlFlow<()>,
+        V: FnMut(&'a O) -> ControlFlow<R>,
     {
         let objects = self.objects.as_ref();
 
@@ -125,12 +125,13 @@ where
     /// even after it has been stopped.
     ///
     /// Requires the `rayon` feature and dispatches tasks into the current [thread pool][rayon::ThreadPool].
-    pub fn par_look_up<'a, Q, V>(&'a self, query: &Q, visitor: V) -> ControlFlow<()>
+    pub fn par_look_up<'a, Q, V, R>(&'a self, query: &Q, visitor: V) -> ControlFlow<R>
     where
         O: Send + Sync,
         O::Point: Sync,
         Q: Query<O::Point> + Sync,
-        V: Fn(&'a O) -> ControlFlow<()> + Sync,
+        V: Fn(&'a O) -> ControlFlow<R> + Sync,
+        R: Send,
     {
         let objects = self.objects.as_ref();
 
@@ -147,15 +148,15 @@ struct LookUpArgs<'a, Q, V> {
     visitor: V,
 }
 
-fn look_up<'a, O, Q, V>(
+fn look_up<'a, O, Q, V, R>(
     args: &mut LookUpArgs<Q, V>,
     mut objects: &'a [O],
     mut axis: usize,
-) -> ControlFlow<()>
+) -> ControlFlow<R>
 where
     O: Object,
     Q: Query<O::Point>,
-    V: FnMut(&'a O) -> ControlFlow<()>,
+    V: FnMut(&'a O) -> ControlFlow<R>,
 {
     loop {
         let (left, object, right) = split(objects);
@@ -188,16 +189,17 @@ where
 }
 
 #[cfg(feature = "rayon")]
-fn par_look_up<'a, O, Q, V>(
+fn par_look_up<'a, O, Q, V, R>(
     args: &LookUpArgs<Q, V>,
     mut objects: &'a [O],
     mut axis: usize,
-) -> ControlFlow<()>
+) -> ControlFlow<R>
 where
     O: Object + Send + Sync,
     O::Point: Sync,
     Q: Query<O::Point> + Sync,
-    V: Fn(&'a O) -> ControlFlow<()> + Sync,
+    V: Fn(&'a O) -> ControlFlow<R> + Sync,
+    R: Send,
 {
     loop {
         let (left, object, right) = split(objects);
@@ -271,10 +273,13 @@ mod tests {
                             .collect::<Vec<_>>();
 
                         let mut results2 = Vec::new();
-                        index.look_up(&query, |object| {
-                            results2.push(object);
-                            ControlFlow::Continue(())
-                        });
+                        index
+                            .look_up(&query, |object| {
+                                results2.push(object);
+                                ControlFlow::<()>::Continue(())
+                            })
+                            .continue_value()
+                            .unwrap();
 
                         results1.sort_unstable();
                         results2.sort_unstable();
@@ -303,10 +308,13 @@ mod tests {
                             .collect::<Vec<_>>();
 
                         let results2 = Mutex::new(Vec::new());
-                        index.par_look_up(&query, |object| {
-                            results2.lock().unwrap().push(object);
-                            ControlFlow::Continue(())
-                        });
+                        index
+                            .par_look_up(&query, |object| {
+                                results2.lock().unwrap().push(object);
+                                ControlFlow::<()>::Continue(())
+                            })
+                            .continue_value()
+                            .unwrap();
                         let mut results2 = results2.into_inner().unwrap();
 
                         results1.sort_unstable();
