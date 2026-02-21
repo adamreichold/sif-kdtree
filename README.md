@@ -1,3 +1,7 @@
+This repository was moved to <https://codeberg.org/adamreichold/sif-kdtree>.
+
+---
+
 # sif-kdtree
 
 [![crates.io](https://img.shields.io/crates/v/sif-kdtree.svg)](https://crates.io/crates/sif-kdtree)
